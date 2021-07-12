@@ -1,7 +1,7 @@
 from app.views.helpers import add_commit, delete_commit
 from app.models.models import Profile
 from flask import Blueprint, render_template, request, jsonify
-from flask_httpauth import HTTPBasicAuth, HTTPTokenAuth
+from flask_httpauth import HTTPDigestAuth, HTTPTokenAuth
 from http import HTTPStatus
 import secrets
 
@@ -9,14 +9,14 @@ bp = Blueprint('users_bp', __name__, url_prefix='/api')
 
 bp_admin = Blueprint('admin_bp', __name__, url_prefix='/admin')
 
-authBasic = HTTPBasicAuth()
+authDigest = HTTPDigestAuth()
 
 authApi = HTTPTokenAuth(scheme='Bearer')
 
 @bp_admin.route('/')
-@authBasic.login_required
+@authDigest.login_required
 def index():
-    logged_user = Profile.query.filter_by(email=authBasic.username()).first()
+    logged_user = Profile.query.filter_by(email=authDigest.username()).first()
     return {"api_token": logged_user.api_key}
 
 @authApi.verify_token
@@ -27,12 +27,11 @@ def verify_token(token):
     except:
         pass
 
-@authBasic.verify_password
-def verify_password(username, password):
+@authDigest.get_password
+def verify_password(email):
     try:
-        user = Profile.query.filter_by(email=username).first()
-        if Profile.check_password(user, password):
-            return user.serialized['name']
+        user = Profile.query.filter_by(email=email).first()
+        return user.password
     except:
         pass
 
@@ -81,7 +80,7 @@ def retrieve():
     return {"name": logged_user.name, "last_name": logged_user.last_name, "email": logged_user.email}
 
 @bp.route('/logout')
-@authBasic.login_required
+@authDigest.login_required
 def logout():
     return "logged out", 401
 
