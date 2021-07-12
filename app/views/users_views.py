@@ -1,31 +1,31 @@
-from app.views.helpers import add_commit, delete_commit
-from app.models.models import Profile
-from flask import Blueprint, render_template, request, jsonify
-from flask_httpauth import HTTPDigestAuth, HTTPTokenAuth
-from http import HTTPStatus
+from operator import ge
 import secrets
+from http import HTTPStatus
+
+from app.models.models import Profile
+from app.views.helpers import add_commit, delete_commit
+from flask import Blueprint, jsonify, render_template, request
+from flask_httpauth import HTTPDigestAuth, HTTPTokenAuth
+from flask_jwt_extended import (JWTManager, create_access_token,
+                                get_jwt_identity, jwt_required)
+from ipdb import set_trace
 
 bp = Blueprint('users_bp', __name__, url_prefix='/api')
 
-bp_admin = Blueprint('admin_bp', __name__, url_prefix='/admin')
-
 authDigest = HTTPDigestAuth()
 
-authApi = HTTPTokenAuth(scheme='Bearer')
+@bp.route("/login", methods=["POST"])
+def login():
+    email = request.json.get("email", None)
+    password = request.json.get("password", None)
 
-@bp_admin.route('/')
-@authDigest.login_required
-def index():
-    logged_user = Profile.query.filter_by(email=authDigest.username()).first()
-    return {"api_token": logged_user.api_key}
+    user = Profile.query.filter_by(email=email).first()
 
-@authApi.verify_token
-def verify_token(token):
-    try:
-        user = Profile.query.filter_by(api_key=token).first()
-        return user.api_key
-    except:
-        pass
+    if email != user.email or password != user.password:
+        return jsonify({"msg": "Bad username or password"}), 401
+
+    access_token = create_access_token(identity=email)
+    return jsonify(access_token=access_token)
 
 @authDigest.get_password
 def verify_password(email):
@@ -48,18 +48,18 @@ def create_profile():
     return jsonify(user.serialized), 201
 
 @bp.route("/", methods=["DELETE"])
-@authApi.login_required
+@jwt_required()
 def delete():
-    logged_user = Profile.query.filter_by(api_key=authApi.current_user()).first()
+    logged_user = Profile.query.filter_by(email=get_jwt_identity()).first()
     delete_commit(logged_user)
     return "", HTTPStatus.NO_CONTENT
 
 @bp.route("/", methods=["PUT"])
-@authApi.login_required
+@jwt_required()
 def update():
     data = request.get_json()
 
-    logged_user = Profile.query.filter_by(api_key=authApi.current_user()).first()
+    logged_user = Profile.query.filter_by(email=get_jwt_identity()).first()
 
     for key, value in data.items():
         setattr(logged_user, key, value)
@@ -74,9 +74,9 @@ def update():
     }, HTTPStatus.OK
 
 @bp.route("/", methods=["GET"])
-@authApi.login_required
+@jwt_required()
 def retrieve():
-    logged_user = Profile.query.filter_by(api_key=authApi.current_user()).first()
+    logged_user = Profile.query.filter_by(email=get_jwt_identity()).first()
     return {"name": logged_user.name, "last_name": logged_user.last_name, "email": logged_user.email}
 
 @bp.route('/logout')
